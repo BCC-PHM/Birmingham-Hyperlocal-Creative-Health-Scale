@@ -1,0 +1,742 @@
+---
+title: "Birmingham Hyperlocal Creative Health Scale 2026"
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: Contents
+    html-math-method: katex  #This tells Quarto to render mathematical expressions in HTML output using KaTeX, a fast math typesetting library. It’s an alternative to MathJax and is often preferred for speed.
+    grid: 
+      body-width: 1300px
+    embed-resources: true
+editor: visual
+execute: 
+  echo: false
+  warning: false
+---
+
+The Birmingham Hyperlocal Creative Health Scale 2026 is an interactive map and database of Birmingham's 69 electoral wards. It brings together 16 independent datasets, across 4 creative health domains, to enable policymakers, leaders and artists to better allocate time and resources for improving the overall wellbeing and creative participation rates of the city's residents. The 4 domains are Adolescents, Children & Young Adults, Cultural Infrastructure, Environmental Challenges and Socioeconomic Inequalities. The Birmingham Hyperlocal Creative Health Scale 2026 presents 21 individual maps consisting of 16 maps for the independent datasets, 4 maps for the 4 domains (based on the average tier for each dataset), and a final ACES map of the overall rankings for the 4 domains combined. This collaboration between Birmingham City Council and Birmingham Hippodrome is the first iteration of the scale, and it will continue to develop and improve as new datasets become available.
+
+::: callout-note
+## Instructions
+
+#### Understanding the rank:
+
+-   Each ward is assigned a rank from 1 to 69, where: Rank 1 = Worst outcome (most disadvantaged) Rank 69 = Best outcome (least disadvantaged)
+-   Darker shades represent worse ranks, while lighter shades represent better ranks.
+
+#### How to use the map
+
+-   Use the tabs at the top to move between categories.
+-   Use the radio buttons in the layer control (top-right) to switch between indicators. This allows you to compare patterns across multiple measures without leaving the map.
+-   Hover over wards for details.
+-   Check the legend for colour meaning.
+-   -- this link needs to be added once report completed - Click HERE to view the explanatory report for *the Birmingham Hyperlocal Creative Health Scale*.
+:::
+
+::: panel-tabset
+## Adolescents, Children and Young Adults
+
+**Adolescents, Children and Young Adults Map**\
+This interactive map shows information about the wellbeing and opportunities for young people in Birmingham. Use the radio buttons in the top-right corner to switch between different layers. Each layer focuses on a different theme, such as Education, Health, and Economic Circumstances, allowing you to explore how these factors vary across different areas.
+
+```{r data_setup_Adolescents_Children_and_Young_Adults_map, echo=FALSE, warning=FALSE,message=FALSE}
+
+# Load required libraries
+library(dplyr)
+library(readxl)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+
+# STEP 1: Load Excel data
+Dataset <- read_excel(
+  path = "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Raw data/Dataset for Hyperlocal Creative Health Scale.xlsx",
+  sheet = "2025 Full Data"
+)
+
+# STEP 2: Load ward boundaries GeoJSON
+Ward_Boundaries <- read_sf(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Ward Boundary file.geojson"
+) %>%
+  rename(Ward = wd21nm)
+
+# STEP 3: Clean column names and join spatial + attribute data
+names(Ward_Boundaries) <- trimws(gsub("[\r\n]", "", names(Ward_Boundaries)))
+names(Dataset) <- trimws(gsub("[\r\n]", "", names(Dataset)))
+
+Ward_Boundaries$Ward <- trimws(Ward_Boundaries$Ward)
+Dataset$Ward <- trimws(Dataset$Ward)
+
+Ward_Boundaries <- Ward_Boundaries %>%
+  left_join(Dataset, by = "Ward")
+
+# Check join worked
+stopifnot(nrow(Ward_Boundaries) == 69)  # Should be 69 rows
+
+# STEP 4: Define indicators
+indicators <- list(
+  "16-24 5 year average monthly claimants to May 2025" = list(
+    Data = "16-24 5 year average monthly claimants to May 2025 - Data",
+    Rank = "16-24 5 year average monthly claimants to May 2025 - Rank DES",
+    Tier = "16-24 5 year average monthly claimants to May 2025 - Tier"
+  ),
+  "Progress 8 2023" = list(
+    Data = "Progress 8 2023 - Data",
+    Rank = "Progress 8 2023 - Rank",
+    Tier = "Progress 8 2023 - Tier"
+  ),
+  "Year 6 Obesity 2024" = list(
+    Data = "Year 6 Obesity 2024 - Data",
+    Rank = "Year 6 Obesity 2024 - Rank DES",
+    Tier = "Year 6 Obesity 2024 - Tier"
+  ),
+  "Absolute Child Poverty 2024" = list(
+    Data = "Absolute Child Poverty 2024 - Data",
+    Rank = "Absolute Child Poverty 2024 - Rank DEC",
+    Tier = "Absolute Child Poverty 2024 - Tier"
+  ),
+  "Adolescents, Children and Young Adults" = list(
+    Data = "Adolescents, Children and Young Adults Data",
+    Rank = "Adolescents, Children and Young Adults Rank",
+    Tier = "Adolescents, Children and Young Adults Tier"
+  )
+)
+# STEP 5: Create base map
+map <- leaflet(data = Ward_Boundaries) %>%  #creating a Leaflet map object
+  addTiles()  # Adds the default OpenStreetMap tiles as the base layer of the map.
+
+# STEP 6: Add layers for each indicator
+first <- TRUE
+for (indicator in names(indicators)) {
+  cols <- indicators[[indicator]]
+  
+  # Ensure Rank column is numeric and handle NA
+  rank_values <- as.numeric(Ward_Boundaries[[cols$Rank]])
+
+  # Gold gradient palette (Rank: 1 darkest, 69 lightest)
+  pal <- colorNumeric(
+    palette = colorRampPalette(c("#b8860b", "#fff8dc"))(69),
+    domain = Ward_Boundaries[[cols$Rank]]
+  )
+  
+  # Add polygons
+  map <- map %>%
+    addPolygons(
+      group = indicator,
+      fillColor = ~pal(rank_values),
+      color = "grey",
+      weight = 1,
+      fillOpacity = 0.8,
+      label = ~lapply(paste0(
+
+"<strong>", Ward, "</strong><br/>",
+        "Rank: ", Ward_Boundaries[[cols$Rank]], "<br/>",
+        "Value: ", ifelse(is.na(Ward_Boundaries[[cols$Data]]), "NA",
+                          round(Ward_Boundaries[[cols$Data]], 1)), "<br/>",
+        "Tier: ", Ward_Boundaries[[cols$Tier]]
+      ), HTML),
+      labelOptions = labelOptions(
+        style = list("font-size" = "12px", "background" = "white"),
+        direction = "auto"
+      )
+    )
+  
+  # Add legend only once
+  if (first) {
+    map <- map %>%
+      addLegend(
+        position = "bottomright",
+        pal = pal,
+        values = rank_values,
+        opacity = 0.8,
+        title = "Rank" 
+      )
+    first <- FALSE
+  }
+}
+
+```
+
+```{r map_code Adolescents Children and Young Adults_map, echo=FALSE, warning=FALSE,message=FALSE}
+#| out-height: 1000px
+#| out-width: 800px
+# STEP 7: Add layer control
+map <- map %>%
+  addLayersControl(
+    baseGroups = names(indicators),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+# STEP 8: Add credit note inside map
+map <- map %>%
+  addControl(
+    html = "<div style='font-size:12px; color:#333;'>Created by Birmingham City Council, Public Health, Knowledge Team</div>",
+    position = "bottomleft"
+  )
+
+
+#show map
+map
+
+
+
+```
+
+## Cultural Infrastructure
+
+**Cultural Infrastructure Map**\
+
+This interactive map shows information about Birmingham’s cultural and creative strengths. Use the radio buttons in the top-right corner to switch between different layers. Each layer focuses on a theme, such as the Economy, Culture, and Sport and Leisure, allowing you to explore how these factors vary across different areas.
+
+```{r data_setup_Cultural_Infrastructure_map, echo=FALSE, warning=FALSE,message=FALSE}
+
+
+# Load required libraries
+library(dplyr)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(stringr)
+
+# STEP 1: Normalize column names in Dataset
+Dataset <- Dataset %>%
+  rename_with(~ gsub("\\s+", " ", .x)) # remove extra spaces
+
+
+# STEP 2: Load ward boundaries GeoJSON
+Ward_Boundaries <- read_sf(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Ward Boundary file.geojson"
+) %>%
+  rename(Ward = wd21nm)
+
+# STEP 3: Join spatial and attribute data
+Ward_Boundaries <- Ward_Boundaries %>%
+  left_join(Dataset, by = "Ward")
+
+
+# STEP 4: Define indicator columns (fixed names)
+indicators <- list(
+  "Creative and Cultural Employees % 2023" = list(
+    Data = "Creative and Cultural Employees % 2023_Data",
+    Rank = "Creative and Cultural Employees % 2023_Rank",
+    Tier = "Creative and Cultural Employees % 2023_Tier"
+  ),
+  "Creative Companies per 1000 2024" = list(
+    Data = "Creative Companies per 1000 2024 - Data",
+    Rank = "Creative Companies per 1000 2024 - Rank",
+    Tier = "Creative Companies per 1000 2024 - Tier"
+  ),
+  
+"National Heritage Listed Buildings per 1000 2023" = list(
+    Data = "National Heritage Listed Buildings per 1000 2023_Data",
+    Rank = "National Heritage Listed Buildings per 1000 2023_Rank",
+    Tier = "National Heritage Listed Buildings per 1000 2023_Tier"
+  ),
+  "Sport and Leisure Assets per 1000 2023" = list(
+    Data = "Sport and Leisure Assets per 1000 2023_Data",
+    Rank = "Sport and Leisure Assets per 1000 2023_ Rank", 
+    Tier = "Sport and Leisure Assets per 1000 2023_Tier"
+  ),
+"Cultural Infrastructure" = list(
+  Data = "Cultural Infrastructure Data",
+  Rank = "Cultural Infrastructure Rank",
+  Tier = "Cultural Infrastructure Tier"
+  )
+)
+
+
+# STEP 5: Create base map
+map <- leaflet(data = Ward_Boundaries) %>%
+  addTiles()
+
+# STEP 6: Add layers for each indicator
+first <- TRUE
+for (indicator in names(indicators)) {
+  cols <- indicators[[indicator]]
+  
+  # Ensure Rank column is numeric and handle NA
+  rank_values <- as.numeric(Ward_Boundaries[[cols$Rank]])
+  
+  # Blue gradient palette
+  pal <- colorNumeric(
+    palette = colorRampPalette(c("#08306b", "#deebf7"))(69),
+ domain = rank_values,
+    na.color = "#f0f0f0" # light grey for NA
+  )
+  
+  # Add polygons
+  map <- map %>%
+    addPolygons(
+      group = indicator,
+      fillColor = ~pal(rank_values),
+      color = "grey",
+      weight = 1,
+      fillOpacity = 0.8,
+      label = ~lapply(paste0(
+
+"<strong>", Ward, "</strong><br/>",
+        "Rank: ", Ward_Boundaries[[cols$Rank]], "<br/>",
+        "Value: ", ifelse(is.na(Ward_Boundaries[[cols$Data]]), "NA",
+                          round(Ward_Boundaries[[cols$Data]], 1)), "<br/>",
+        "Tier: ", Ward_Boundaries[[cols$Tier]]
+      ), HTML),
+      labelOptions = labelOptions(
+        style = list("font-size" = "12px", "background" = "white"),
+        direction = "auto"
+      )
+    )
+  
+  # Add legend only once
+  if (first) {
+    map <- map %>%
+      addLegend(
+        position = "bottomright",
+        pal = pal,
+        values = rank_values,
+        opacity = 0.8,
+         title = "Rank", 
+        labFormat = labelFormat(digits = 0),
+            )
+    first <- FALSE
+  }
+}
+
+
+
+```
+
+```{r map_code Cultural_Infrastructure_map, echo=FALSE, warning=FALSE,message=FALSE}
+#| out-height: 1000px
+#| out-width: 800px
+# STEP 7: Add layer control
+map <- map %>%
+  addLayersControl(
+    baseGroups = names(indicators),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# STEP 8: Add credit note inside map
+map <- map %>%
+  addControl(
+    html = "<div style='font-size:12px; color:#333;'>Created by Birmingham City Council, Public Health, Knowledge Team</div>",
+    position = "bottomleft"
+  )
+
+
+
+#show map
+map
+
+
+```
+
+## Environmental Challenges
+
+**Environmental Challeges Map**\
+
+This interactive map shows information about environmental pressures and population characteristics across Birmingham’s wards. Use the radio buttons in the top-right corner to switch between different layers. Each layer represents a specific theme, such as Environmental Health and Demographics/Urban Environment.
+
+```{r data_setup_Environmental_Challenges_map, echo=FALSE, warning=FALSE, message=FALSE}
+# Load libraries
+library(dplyr)
+library(readxl)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(stringr)
+
+# STEP 1: Load data
+Dataset <- read_excel(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Raw data/Dataset for Hyperlocal Creative Health Scale.xlsx",
+  sheet = "2025 Full Data"
+)
+
+Ward_Boundaries <- read_sf(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Ward Boundary file.geojson"
+) %>%
+  rename(Ward = wd21nm)
+
+# STEP 2: Clean names
+clean_names <- function(x) {
+  x %>%
+    tolower() %>%
+    trimws() %>%
+    gsub("&", "and", .) %>%
+    gsub("’", "'", .) %>%
+    gsub("-", " ", .)
+}
+
+Ward_Boundaries <- Ward_Boundaries %>%
+  mutate(Ward = clean_names(Ward))
+
+Dataset <- Dataset %>%
+  mutate(Ward = clean_names(Ward))
+
+Ward_Boundaries <- Ward_Boundaries %>%
+  left_join(Dataset, by = "Ward")
+
+# Clean column names globally
+names(Ward_Boundaries) <- gsub("[\r\n]", " ", names(Ward_Boundaries))
+names(Ward_Boundaries) <- gsub("\\s+", " ", names(Ward_Boundaries))
+names(Ward_Boundaries) <- trimws(names(Ward_Boundaries))
+
+# STEP 3: Indicators
+indicators <- list(
+  "Air Pollution Deaths (years Lost) 2022" = list(
+    Data = "Air Pollution Deaths (years Lost) 2022_ Data", 
+    Rank = "Air Pollution Deaths (years Lost) 2022_Rank", 
+    Tier = "Air Pollution Deaths (years Lost) 2022_Tier"),
+  
+  "Informal, Parks and Rec and Natural Green Space per 1000 (hectares) 2022" = list(
+    Data = "Informal, Parks and Rec and Natural Green Space per 1000 (hectares) 2022 _ Data", 
+    Rank = "Informal, Parks and Rec and Natural Green Space per 1000 (hectares) 2022 - Rank", 
+    Tier = "Informal, Parks and Rec and Natural Green Space per 1000 (hectares) 2022 - tier"),
+  "Population Density 2021" = list(
+    Data = "Population Density 2021 - Data", 
+    Rank = "Population Density 2021 - Rank DES", 
+    Tier = "Population Density 2021 - Tier"),
+  "Disabled under EA 2021" = list(
+    Data = "Disabled under EA 2021 - Data", 
+    Rank = "Disabled rank DES 2021", 
+    Tier = "Disabled Tier 2021"),
+  "Environmental Challenges" = list(
+    Data = "Environmental Challenges Data", 
+    Rank = "Environmental Challenges Rank", 
+    Tier = "Environmental Challenges Tier")
+)
+
+# STEP 4: Create map
+map <- leaflet(Ward_Boundaries) %>% addTiles()
+
+# Helper function to add indicator layer
+add_indicator_layer <- function(map, indicator, cols) {
+  rank_values <- suppressWarnings(as.numeric(Ward_Boundaries[[cols$Rank]]))
+  if (length(rank_values[!is.na(rank_values)]) == 0) return(map)
+  
+  pal <- colorNumeric(palette = colorRampPalette(c("#00441b", "#e5f5e0"))(69),
+                      domain = rank_values[!is.na(rank_values)], na.color = "transparent")
+  
+  map <- map %>%
+    addPolygons(
+      group = indicator,
+      fillColor = ~pal(rank_values),
+      color = "grey", weight = 1, fillOpacity = 0.8,
+      label = ~lapply(paste0(
+        "<strong>", str_to_title(Ward), "</strong><br/>",
+        "Rank: ", Ward_Boundaries[[cols$Rank]], "<br/>",
+        "Value: ", ifelse(is.na(Ward_Boundaries[[cols$Data]]), "NA",
+                          round(as.numeric(Ward_Boundaries[[cols$Data]]), 1)), "<br/>",
+        "Tier: ", Ward_Boundaries[[cols$Tier]]
+      ), HTML)
+    )
+  
+  return(list(map = map, pal = pal, values = rank_values))
+}
+
+# STEP 5: Add layers
+first <- TRUE
+for (indicator in names(indicators)) {
+  cols <- indicators[[indicator]]
+  result <- add_indicator_layer(map, indicator, cols)
+  if (is.list(result)) {
+    map <- result$map
+    if (first) {
+      map <- map %>% addLegend(position = "bottomright", pal = result$pal,
+                               values = result$values, opacity = 0.8,
+                                title = "Rank", 
+                               labFormat = labelFormat(digits = 0))
+         first <- FALSE
+    }
+  }
+}
+
+
+```
+
+```{r map_code Environmental_Challenges_map, echo=FALSE, warning=FALSE,message=FALSE}
+#| out-height: 1000px
+#| out-width: 800px
+# STEP 8: Add layer control
+map <- map %>%
+  addLayersControl(
+    baseGroups = names(indicators),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# STEP 9: Add credit note inside map
+map <- map %>%
+  addControl(
+    html = "<div style='font-size:12px; color:#333;'>Created by Birmingham City Council, Public Health, Knowledge Team</div>",
+    position = "bottomleft"
+  )
+
+
+#show map
+map
+
+
+```
+
+## Socioeconomic Inequalities
+
+**Socioeconomic Inequalities Map**\
+
+This interactive map shows information about social and economic disparities across Birmingham’s wards. Use the radio buttons in the top-right corner to switch between different layers. Each layer represents a specific theme, such as Community Safety, Education and Skills, and Migration.
+
+```{r data_setup_Socioeconomic_Inequalities_map, echo=FALSE, warning=FALSE, message=FALSE}
+
+# Load required libraries
+library(dplyr)
+library(readxl)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+
+# STEP 1: Load Excel data
+Dataset <- read_excel(
+  path = "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Raw data/Dataset for Hyperlocal Creative Health Scale.xlsx",
+  sheet = "2025 Full Data"
+)
+
+# STEP 2: Load ward boundaries GeoJSON
+Ward_Boundaries <- read_sf(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Ward Boundary file.geojson"
+) %>%
+  rename(Ward = wd21nm)
+
+# STEP 3: Join spatial and attribute data
+Ward_Boundaries <- Ward_Boundaries %>%
+  left_join(Dataset, by = "Ward")
+
+# STEP 4: Define indicators for Socioeconomic Inequalities
+indicators <- list(
+  "Global Majority 2021" = list(
+    Data = "Global Majority 2021 - Data",
+    Rank = "Global Majority 2021 DES",
+    Tier = "Global Majority 2021 Tier"
+  ),
+  "Crime Rate per 1k May 2021" = list(
+    Data = "Crime Rate per 1k 2021 - Data",
+    Rank = "Crime Rate per 1k 2021 - Rank DES",
+    Tier = "Crime Rate per 1k 2021 - Tier"
+  ),
+  "Adults with No Qualifications 2021" = list(
+    Data = "Adults with No Qualifications 2021 - Data",
+    Rank = "Adults with No Qualifications 2021 - Rank DES",
+    Tier = "Adults with No Qualifications 2021 - Tier"
+  ),
+  "Born Outside UK 2021" = list(
+    Data = "Born Outside UK 2021 - Data",
+    Rank = "Born Outside UK 2021 - Rank DES",
+    Tier = "Born Outside UK 2021 - Tier"
+  ), 
+  "Socioeconomic Inequalities" = list(
+    Data = "Socioeconomic Inequalities Data",
+    Rank = "Socioeconomic Inequalities Rank",
+    Tier = "Socioeconomic Inequalities Tier"
+  )
+  
+)
+
+# STEP 5: Create base map
+map <- leaflet(data = Ward_Boundaries) %>%
+  addTiles()
+
+# STEP 6: Add layers for each indicator
+first <- TRUE
+for (indicator in names(indicators)) {
+  cols <- indicators[[indicator]]
+  
+  # Pink gradient palette (Rank: 1 darkest, 69 lightest)
+  pal <- colorNumeric(
+    palette = colorRampPalette(c("#7a0177", "#f7f4f9"))(69),
+    domain = Ward_Boundaries[[cols$Rank]]
+  )
+  
+  # Add polygons
+  map <- map %>%
+    addPolygons(
+      group = indicator,
+      fillColor = ~pal(Ward_Boundaries[[cols$Rank]]),
+      color = "grey",
+      weight = 1,
+      fillOpacity = 0.8,
+      label = ~lapply(paste0(
+        "<strong>", Ward, "</strong><br/>",
+        "Rank: ", Ward_Boundaries[[cols$Rank]], "<br/>",
+        "Value: ", round(as.numeric(Ward_Boundaries[[cols$Data]]), 1), "<br/>",
+        "Tier: ", Ward_Boundaries[[cols$Tier]]
+      ), HTML),
+      labelOptions = labelOptions(
+        style = list("font-size" = "12px", "background" = "white"),
+        direction = "auto"
+      )
+    )
+  
+ # Add legend only once, with no title
+  if (first) {
+    map <- map %>%
+      addLegend(
+        position = "bottomright",
+        pal = pal,
+        values = Ward_Boundaries[[cols$Rank]],
+        opacity = 0.8,
+         title = "Rank", 
+        labFormat = labelFormat(digits = 0)
+      )
+    first <- FALSE
+  }
+}
+
+```
+
+```{r map_code Socioeconomic_Inequalities_map, echo=FALSE, warning=FALSE,message=FALSE}
+#| out-height: 1000px
+#| out-width: 800px
+# STEP 7: Add layer control
+map <- map %>%
+  addLayersControl(
+    baseGroups = names(indicators),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# STEP 7.5: Add centered title across the top
+map <- map %>%
+  addControl(
+    html = "<div style='width:100%; text-align:center;'>
+              <h2 style='font-weight:bold; margin:10px;'>Socioeconomic Inequalities</h2>
+            </div>",
+    position = "topleft"
+  )
+
+# STEP 8: Add credit note inside map
+map <- map %>%
+  addControl(
+    html = "<div style='font-size:12px; color:#333;'>Created by Birmingham City Council, Public Health, Knowledge Team</div>",
+    position = "bottomleft"
+  )
+
+
+#show map
+map
+
+
+```
+
+## ACES Average
+
+**ACES Map**\
+
+ACES Average Map This interactive map visualises a composite score called ACES, which stands for:
+
+A – Adolescents, Children and Young Adults, C – Cultural Infrastructure, E – Environmental Challenges, S – Socioeconomic Inequalities.
+
+The ACES Average - An average score for all of the above indicators.
+
+```{r data_setup_ACES_Average_map, echo=FALSE, warning=FALSE, message=FALSE}
+
+# STEP 2: Load ward boundaries GeoJSON
+Ward_Boundaries <- read_sf(
+  "X:/Intelligence/2. Requests/REQ3312 - Hippodrome Mapping - Jay Rowe/Ward Boundary file.geojson"
+) %>%
+  rename(Ward = wd21nm)
+
+# STEP 3: Join spatial and attribute data
+Ward_Boundaries <- Ward_Boundaries %>%
+  left_join(Dataset, by = "Ward")
+
+# STEP 4: Define ACES indicator columns
+indicators <- list(
+  "ACES" = list(
+    Data = "ACES - Average - Data",
+    Rank = "ACES - Rank",
+    Tier = "ACES - Tier"
+  )
+)
+
+# STEP 5: Create base map
+map <- leaflet(data = Ward_Boundaries) %>%
+  addTiles()
+
+# STEP 6: Add ACES layer
+for (indicator in names(indicators)) {
+  cols <- indicators[[indicator]]
+  
+  # Red gradient palette (Rank: 1 darkest, 69 lightest)
+  pal <- colorNumeric(
+    palette = colorRampPalette(c("#67000d", "#fcbba1"))(69),
+    domain = Ward_Boundaries[[cols$Rank]]
+  )
+  
+  # Add polygons
+  map <- map %>%
+    addPolygons(
+      group = indicator,
+      fillColor = ~pal(Ward_Boundaries[[cols$Rank]]),
+      color = "grey",
+      weight = 1,
+      fillOpacity = 0.8,
+      label = ~lapply(paste0(
+        "<strong>", Ward, "</strong><br/>",
+        "Rank: ", Ward_Boundaries[[cols$Rank]], "<br/>",
+        "Value: ", round(Ward_Boundaries[[cols$Data]],1), "<br/>",#rounded to 1 decimal
+        "Tier: ", Ward_Boundaries[[cols$Tier]]
+      ), HTML),
+      labelOptions = labelOptions(
+        style = list("font-size" = "12px", "background" = "white"),
+        direction = "auto"
+      )
+    ) %>%
+    addLegend(
+      position = "bottomright",
+      pal = pal,
+      values = Ward_Boundaries[[cols$Rank]],
+      opacity = 0.8,
+       title = "Rank", 
+      labFormat = labelFormat(digits = 0)
+    )
+}
+
+```
+
+```{r map_code ACES_Average_map, echo=FALSE, warning=FALSE,message=FALSE}
+#| out-height: 1000px
+#| out-width: 800px
+# STEP 7: Add layer control
+map <- map %>%
+  addLayersControl(
+    baseGroups = names(indicators),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# STEP 7.5: Add centered title across the top
+map <- map %>%
+  addControl(
+    html = "<div style='width:100%; text-align:center;'>
+              <h2 style='font-weight:bold; margin:10px;'>Socioeconomic Inequalities</h2>
+            </div>",
+    position = "topleft"
+  )
+
+# STEP 8: Add credit note inside map
+map <- map %>%
+  addControl(
+    html = "<div style='font-size:12px; color:#333;'>Created by Birmingham City Council, Public Health, Knowledge Team</div>",
+    position = "bottomleft"
+  )
+
+
+#show map
+map
+
+```
+:::
+
+```{r}
+Birmingham_Hyperlocal_Creative_Health_Scale_2026.html
+```
